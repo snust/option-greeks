@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from options_calculator import calculate_greeks
-import plotly.graph_objects as go
 
 def main():
     st.title("Options greeks dashboard")
@@ -54,69 +53,75 @@ def main():
     # Display dataframe
     st.dataframe(greeks_df, hide_index=True)
 
-    # Create data for line plots
-    days_range = np.linspace(1, days_to_expiry + 20, 10)
-    vol_range = np.linspace(0.01, 2.0, 50)
-    
-    # Create dataframes for plotting
-    # Days to Expiry analysis (keeping current volatility)
-    days_data = {
-        'Days to Expiry': days_range,
-        'Theta': []
-    }
-    
-    for days in days_range:
-        result = calculate_greeks(
-            current_price,
-            strike_price,
-            days / 365,
-            risk_free_rate / 100,
-            volatility / 100,
-            option_type.lower(),
-            long_short.lower()
-        )
-        days_data['Theta'].append(result['theta'])
-
-    days_df = pd.DataFrame(days_data)
-
     # Display line charts
     st.header("Greeks Analysis")
+
+    # Create two columns for inputs
+    input_col3, input_col4 = st.columns(2)
+
+    with input_col3:
+        greek = st.selectbox("Greek", ["Delta", "Gamma", "Theta", "Vega", "Rho"])
+
+    with input_col4:
+        changes = st.selectbox("Time / Implied Volatility", ["Time", "Implied Volatility"])
     
     # Days to Expiry Analysis
-    st.subheader("Theta changes over time")
-    st.line_chart(days_df.set_index('Days to Expiry'))
+    st.subheader(greek + " against " + changes)
+    # Generate price range around strike price (±50%)
+    price_range = np.linspace(strike_price * 0.5, strike_price * 1.5, 100)
     
-    # Volatility analysis (keeping current days to expiry)
-    vol_data = {
-        'Volatility (%)': vol_range * 100,
-        'Delta': [],
-        'Gamma': [],
-        'Theta': [],
-        'Vega': []
-    }
+    # Initialize dataframe to store values
+    df = pd.DataFrame()
+    df['Price'] = price_range
     
-    for vol in vol_range:
-        result = calculate_greeks(
-            current_price,
-            strike_price,
-            days_to_expiry/365,
-            risk_free_rate / 100,
-            vol / 100,
-            option_type.lower(),
-            long_short.lower()
-        )
-        vol_data['Delta'].append(result['delta'])
-        vol_data['Gamma'].append(result['gamma'])
-        vol_data['Theta'].append(result['theta'])
-        vol_data['Vega'].append(result['vega'])
-    
-    vol_df = pd.DataFrame(vol_data)
+    if changes == "Time":
+        # Calculate for different time periods
+        time_periods = [(days_to_expiry/4)/365, (days_to_expiry/2)/365, days_to_expiry/365]
+        labels = [f"{days_to_expiry//4} days", f"{days_to_expiry//2} days", f"{days_to_expiry} days"]
+        
+        for i, t in enumerate(time_periods):
+            values = []
+            for price in price_range:
+                result = calculate_greeks(
+                    price,
+                    strike_price,
+                    t,
+                    risk_free_rate / 100,
+                    volatility / 100,
+                    option_type.lower(),
+                    long_short.lower()
+                )
+                values.append(result[greek.lower()])
+            df[labels[i]] = values
+            
+    else:  # Implied Volatility analysis
+        # Calculate for different volatilities
+        vol_levels = [(volatility*0.5)/100, volatility/100, (volatility*1.5)/100]
+        labels = [f"{volatility*0.5}% IV", f"{volatility}% IV", f"{volatility*1.5}% IV"]
+        
+        for i, vol in enumerate(vol_levels):
+            values = []
+            for price in price_range:
+                result = calculate_greeks(
+                    price,
+                    strike_price,
+                    days_to_expiry / 365,
+                    risk_free_rate / 100,
+                    vol,
+                    option_type.lower(),
+                    long_short.lower()
+                )
+                values.append(result[greek.lower()])
+            df[labels[i]] = values
 
+    # Set price as index for the line chart
+    df = df.set_index('Price')
     
+    # Display the line chart using streamlit
+    st.line_chart(df)
     
-    # Volatility Analysis
-    st.subheader("Greeks vs Implied Volatility")
-    st.line_chart(vol_df.set_index('Volatility (%)'))
+    # Add note about strike price
+    st.caption(f"Strike price: ${strike_price:.2f}")
 
 if __name__ == "__main__":
     main()
